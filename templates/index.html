@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anomaly Detection Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div>
+        <label for="startDate">Start Date:</label>
+        <input type="date" id="startDate">
+        <label for="endDate">End Date:</label>
+        <input type="date" id="endDate">
+        <button id="plotButton">Plot Chart</button>
+    </div>
+
+    <canvas id="anomalyChart" width="400" height="200"></canvas>
+
+    <script>
+        let anomalyChart; // Store the chart instance
+
+        async function fetchAnomalyData(startDate, endDate) {
+            const response = await fetch(`/get_anomaly_data?start_date=${startDate}&end_date=${endDate}`);
+            const data = await response.json();
+            return data;
+        }
+
+        async function updateChart() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (startDate && endDate && startDate <= endDate) {
+                const data = await fetchAnomalyData(startDate, endDate);
+                plotChart(data);
+            }
+        }
+
+        function plotChart(data) {
+            const timestamps = data.map(entry => entry.ds);
+            const values = data.map(entry => entry.y);
+            const anomalies = data.map(entry => entry.anomaly);
+            const upperBounds = data.map(entry => entry.upper_bound); // Assuming column name is 'upper_bound'
+            const lowerBounds = data.map(entry => entry.lower_bound); // Assuming column name is 'lower_bound'
+
+            const ctx = document.getElementById('anomalyChart').getContext('2d');
+
+            if (anomalyChart) {
+                // Update existing chart data and options
+                anomalyChart.data.labels = timestamps;
+                anomalyChart.data.datasets[0].data = values;
+                anomalyChart.data.datasets[1].data = upperBounds;
+                anomalyChart.data.datasets[2].data = lowerBounds;
+                for (let i = 0; i < anomalies.length; i++) {
+                anomalyChart.data.datasets[0].pointBackgroundColor[i] = anomalies[i] === 1 ? 'red' : 'blue';
+    }
+                anomalyChart.update(); // Update the chart
+            } else {
+                // Create new chart
+                anomalyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: timestamps,
+                        datasets: [
+                            {
+                                label: 'Values',
+                                data: values,
+                                borderColor: 'blue',
+                                fill: false,
+                                pointBackgroundColor: anomalies.map(anomaly =>
+                                    anomaly === 1 ? 'red' : 'blue'
+                                )
+                            },
+                            {
+                                label: 'Upper Bound',
+                                data: upperBounds,
+                                borderColor: 'green',
+                                borderDash: [10, 5],
+                                fill: false
+                            },
+                            {
+                                label: 'Lower Bound',
+                                data: lowerBounds,
+                                borderColor: 'orange',
+                                borderDash: [10, 5],
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: false // You may want to adjust this based on your data range
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        const plotButton = document.getElementById('plotButton');
+
+        plotButton.addEventListener('click', updateChart);
+
+        // Initial update when the page loads
+        updateChart();
+    </script>
+</body>
+</html>
