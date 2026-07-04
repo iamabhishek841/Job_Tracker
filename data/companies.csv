@@ -1,4 +1,17 @@
 company_name,company_type,ireland_locations,career_url,ats_type,sponsor_likelihood,notes
 Amazon / AWS,Big Tech,Dublin/Cork,https://www.amazon.jobs/en/locations/ireland,Custom,High,Large multinational; check each role for right-to-work wording.
+Microsoft,Big Tech,Dublin,https://jobs.careers.microsoft.com/global/en/search?lc=Ireland,Custom,High,Large multinational; strong cloud/software roles.
+Google,Big Tech,Dublin,https://www.google.com/about/careers/applications/jobs/results/?location=Ireland,Custom,High,Large multinational; highly competitive.
+Apple,Big Tech,Cork,https://jobs.apple.com/en-ie/search?location=ireland-IRL,Custom,High,Large multinational; Cork roles can be technical/operations.
+Oracle,Big Tech,Dublin,https://careers.oracle.com/jobs/#en/sites/jobsearch/requisitions?location=Ireland,Oracle,High,Relevant to current Oracle Labs experience.
 Workday,SaaS,Dublin,https://workday.wd5.myworkdayjobs.com/Workday,Workday,High,Large Dublin engineering presence.
 Stripe,Fintech,Dublin,https://stripe.com/jobs,Custom/Greenhouse,High,Fintech; backend/platform roles can be strong fit.
+Mastercard,Fintech,Dublin,https://careers.mastercard.com/us/en/search-results?keywords=&location=Ireland,Workday,High,Large payments employer.
+Fidelity Investments,Fintech,Dublin/Galway,https://jobs.fidelity.com/en/jobs/?search=&country=Ireland,Workday,High,Engineering roles in Dublin/Galway.
+Susquehanna International Group,Trading,Dublin,https://sig.com/careers/open-positions/?location=Dublin,Custom,Medium-High,Trading/technology roles; competition high.
+Optum / UnitedHealth Group,Healthcare Tech,Dublin/Letterkenny,https://careers.unitedhealthgroup.com/job-search-results/?location=Ireland,Custom,Medium-High,Healthcare technology roles.
+Version 1,Consultancy,Dublin/Cork,https://www.version1.com/careers/search-jobs/,SmartRecruiters,Medium,Consultancy; permanent roles likely but check permit support.
+Accenture,Consultancy,Dublin/Cork,https://www.accenture.com/ie-en/careers/jobsearch,Custom,Medium-High,Large consultancy; role/sponsor policy can vary.
+Morgan McKinley,Recruitment Agency,Ireland,https://www.morganmckinley.com/ie/jobs,Custom,Medium,Recruiter source; ask permanent CSEP-supported only.
+Archer Recruitment,Recruitment Agency,Dublin,https://www.archer.ie/jobs/,Custom,Medium,Tech recruiter; ask sponsor-friendly permanent roles.
+Reperio Human Capital,Recruitment Agency,Dublin,https://www.reperiohumancapital.com/search-jobs,Custom,Medium,Tech recruiter; many software roles.
