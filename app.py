@@ -235,23 +235,60 @@ def analytics(df: pd.DataFrame) -> None:
     st.plotly_chart(fig, use_container_width=True, key="weekly_analytics_chart")
 
 
+def job_finder_tab() -> None:
+    st.subheader("🎯 Job Finder")
+    st.info("Company DB added. Next step is JD analyzer integration. For now, use the generated search links and company portal table.")
+    role_family = st.selectbox("Role family", ["Backend Engineer", "Platform Engineer", "Software Engineer", "Data Platform Engineer", "Data Engineer", "ML Platform Engineer", "DevOps / SRE"])
+    location = st.selectbox("Location", ["All Ireland", "Dublin", "Cork", "Galway", "Limerick", "Remote Ireland"])
+    source = st.radio("Source", ["ATS portals", "Irish job boards", "LinkedIn link"], horizontal=True)
+    role_query = {
+        "Backend Engineer": "Backend Engineer OR Software Engineer OR Java Developer",
+        "Platform Engineer": "Platform Engineer OR Cloud Software Engineer",
+        "Software Engineer": "Software Engineer OR Software Developer",
+        "Data Platform Engineer": "Data Platform Engineer OR Spark SQL",
+        "Data Engineer": "Data Engineer OR Spark OR SQL",
+        "ML Platform Engineer": "ML Platform Engineer OR MLOps Engineer",
+        "DevOps / SRE": "Site Reliability Engineer OR DevOps Engineer",
+    }[role_family]
+    loc = "Ireland" if location == "All Ireland" else location
+    if source == "ATS portals":
+        queries = [f'site:boards.greenhouse.io {loc} ({role_query})', f'site:jobs.lever.co {loc} ({role_query})', f'site:ashbyhq.com {loc} ({role_query})', f'site:myworkdayjobs.com {loc} ({role_query})']
+    elif source == "Irish job boards":
+        queries = [f'site:irishjobs.ie {loc} ({role_query})', f'site:ie.indeed.com {loc} ({role_query})', f'site:jobs.ie {loc} ({role_query})']
+    else:
+        queries = [f'{role_query} {loc}']
+    for q in queries:
+        if source == "LinkedIn link":
+            st.markdown(f"- [{q}](https://www.linkedin.com/jobs/search/?keywords={quote_plus(q)}&location=Ireland)")
+        else:
+            st.markdown(f"- [{q}](https://www.google.com/search?q={quote_plus(q)})")
+    try:
+        companies = pd.read_csv("data/companies.csv")
+        st.dataframe(companies, use_container_width=True, hide_index=True, column_config={"career_url": st.column_config.LinkColumn("Career URL")})
+    except Exception as exc:
+        st.warning(f"Company DB not available: {exc}")
+
+
 def main() -> None:
     try:
         df = prepare(load_data(SHEET_URL, SHEET_NAME))
     except Exception as exc:
         st.error("Google Sheet read nahi ho pa raha.")
         st.markdown("Sheet sharing **Anyone with the link → Viewer** karo aur tab name **Job Applications** rakho.")
-        st.code(str(exc)); return
+        st.code(str(exc)); df = pd.DataFrame()
     latest = df["Received Datetime"].max() if not df.empty else pd.NaT
     latest_text = latest.strftime("%d %b %Y, %H:%M") if pd.notna(latest) else "No clean rows yet"
     st.markdown(f"<div class='hero'><h1>📬 Job Application Tracker</h1><p>Only real applications, updates, assessments, interviews and rejections • Latest tracked: {latest_text}</p></div>", unsafe_allow_html=True)
-    filtered = filter_df(df); show_metrics(filtered)
-    tabs = st.tabs(["Overview", "Follow-ups", "Applications", "Company Timeline", "Analytics"])
-    with tabs[0]: charts(filtered)
-    with tabs[1]: st.subheader("🔥 Follow-up needed"); data_table(filtered, followups=True) if not filtered[filtered["Action Needed"]].empty else st.success("No urgent job email needs action right now.")
-    with tabs[2]: st.subheader("📋 All tracked emails"); data_table(filtered)
+    filtered = filter_df(df) if not df.empty else df
+    if not filtered.empty:
+        show_metrics(filtered)
+    tabs = st.tabs(["Overview", "Follow-ups", "Applications", "Company Timeline", "Analytics", "Job Finder"])
+    with tabs[0]: charts(filtered) if not filtered.empty else st.info("No clean tracker data yet.")
+    with tabs[1]: st.subheader("🔥 Follow-up needed"); data_table(filtered, followups=True) if not filtered.empty and not filtered[filtered["Action Needed"]].empty else st.success("No urgent job email needs action right now.")
+    with tabs[2]: st.subheader("📋 All tracked emails"); data_table(filtered) if not filtered.empty else st.info("No tracked emails yet.")
     with tabs[3]: st.subheader("🏢 Company timeline"); company_timeline(filtered)
     with tabs[4]: st.subheader("📈 Weekly analytics"); analytics(filtered)
+    with tabs[5]: job_finder_tab()
 
 
 if __name__ == "__main__":
