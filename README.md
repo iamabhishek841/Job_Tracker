@@ -1,11 +1,10 @@
 # Job Application Tracker Dashboard
 
-A responsive Streamlit dashboard for the Gmail -> Google Sheet job application tracker.
+A responsive Streamlit dashboard for Gmail to Google Sheet job application tracking, now with an Ireland Job Finder tab.
 
 ## What it shows
 
 - Total tracked emails
-- Applications in the last 7 days
 - Action needed emails
 - Online assessments
 - Interview / next-stage emails
@@ -14,34 +13,27 @@ A responsive Streamlit dashboard for the Gmail -> Google Sheet job application t
 - Company timeline
 - Weekly analytics
 - CSV download
+- Job Finder with ATS, Irish job board, startup and LinkedIn search links
+- Sponsor-likely company portal database
 
 ## Data source
 
-The app reads the `Job Applications` tab from your Google Sheet.
+The app reads the Job Applications tab from your Google Sheet.
 
-For the app to read it directly, set sharing to:
-
-`Anyone with the link -> Viewer`
+For the app to read it directly, set sharing to: Anyone with the link -> Viewer
 
 ## Run locally
 
-```bash
 pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
+
+streamlit run app.py
 
 ## Streamlit Cloud deploy
 
-1. Go to Streamlit Community Cloud
-2. New app
-3. Repository: `iamabhishek841/Dashboard_AD`
-4. Branch: `master`
-5. Main file path: `streamlit_app.py`
-6. Deploy
+Repository: iamabhishek841/Job_Tracker
 
-Optional secrets:
+Branch: master
 
-```toml
-GOOGLE_SHEET_URL = "your_google_sheet_url"
-GOOGLE_SHEET_NAME = "Job Applications"
-```
+Main file path: app.py
+
+LinkedIn is not scraped. The app only generates LinkedIn search links.
