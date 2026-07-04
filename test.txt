@@ -1,1 +1,1 @@
-test
+temporary placeholder created during repository write check; safe to delete
