@@ -162,7 +162,7 @@ def card(label: str, value: int | str, help_text: str) -> None:
 def filter_df(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.title("⚙️ Tracker")
     st.sidebar.caption("Google Sheet → Streamlit dashboard")
-    if st.sidebar.button("Refresh now", use_container_width=True):
+    if st.sidebar.button("Refresh now", use_container_width=True, key="refresh_now_sidebar"):
         st.cache_data.clear()
         st.rerun()
     st.sidebar.divider()
@@ -172,13 +172,13 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
     min_dt, max_dt = df["Received Datetime"].min(), df["Received Datetime"].max()
     min_date = min_dt.date() if pd.notna(min_dt) else date.today() - timedelta(days=30)
     max_date = max_dt.date() if pd.notna(max_dt) else date.today()
-    picked = st.sidebar.date_input("Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+    picked = st.sidebar.date_input("Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date, key="date_range_filter")
     start, end = picked if isinstance(picked, tuple) and len(picked) == 2 else (min_date, max_date)
-    statuses = st.sidebar.multiselect("Status", [s for s in STATUS_ORDER if s in set(df["Status"])] + sorted(set(df["Status"]) - set(STATUS_ORDER)))
-    companies = st.sidebar.multiselect("Company", sorted(df["Company Name"].unique()))
-    priorities = st.sidebar.multiselect("Priority", ["High", "Medium", "Normal"])
-    action = st.sidebar.radio("Action Needed", ["All", "Yes", "No"], horizontal=True)
-    search = st.sidebar.text_input("Search company / role / subject")
+    statuses = st.sidebar.multiselect("Status", [s for s in STATUS_ORDER if s in set(df["Status"])] + sorted(set(df["Status"]) - set(STATUS_ORDER)), key="status_filter")
+    companies = st.sidebar.multiselect("Company", sorted(df["Company Name"].unique()), key="company_filter")
+    priorities = st.sidebar.multiselect("Priority", ["High", "Medium", "Normal"], key="priority_filter")
+    action = st.sidebar.radio("Action Needed", ["All", "Yes", "No"], horizontal=True, key="action_needed_filter")
+    search = st.sidebar.text_input("Search company / role / subject", key="search_filter")
     out = df[(df["Date"] >= start) & (df["Date"] <= end)].copy()
     if statuses:
         out = out[out["Status"].isin(statuses)]
@@ -223,7 +223,7 @@ def charts(df: pd.DataFrame) -> None:
             x = df.groupby("Status", as_index=False).size().rename(columns={"size": "Count"}).sort_values("Count", ascending=False)
             fig = px.bar(x, x="Status", y="Count", text="Count", color="Status", color_discrete_map=STATUS_COLORS)
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), showlegend=False, xaxis_title="", yaxis_title="Emails")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="status_pipeline_chart")
     with right:
         st.subheader("Daily activity")
         if df.empty:
@@ -232,18 +232,19 @@ def charts(df: pd.DataFrame) -> None:
             d = df.dropna(subset=["Received Datetime"]).assign(Day=lambda z: z["Received Datetime"].dt.date).groupby(["Day", "Status"], as_index=False).size().rename(columns={"size": "Count"})
             fig = px.area(d, x="Day", y="Count", color="Status", color_discrete_map=STATUS_COLORS)
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title="", yaxis_title="Emails", legend_title="")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="daily_activity_chart")
 
 
 def dataframe(df: pd.DataFrame, followups_only: bool = False) -> None:
+    table_key = "followups" if followups_only else "applications"
     if followups_only:
         df = df[df["Action Needed"]].copy()
         df["Priority Rank"] = df["Priority"].map({"High": 0, "Medium": 1, "Normal": 2}).fillna(3)
         df = df.sort_values(["Priority Rank", "Received Datetime"], ascending=[True, False])
     cols = ["Date", "Time", "Priority", "Company Name", "Job Role", "Status", "Action Needed", "Thread Type", "Deadline", "Subject", "Gmail Link", "Notes"]
     display = df[cols].rename(columns={"Company Name": "Company", "Job Role": "Role", "Gmail Link": "Open Email"})
-    st.dataframe(display, use_container_width=True, hide_index=True, height=560, column_config={"Open Email": st.column_config.LinkColumn("Open Email", display_text="Open"), "Action Needed": st.column_config.CheckboxColumn("Action Needed"), "Subject": st.column_config.TextColumn(width="large"), "Notes": st.column_config.TextColumn(width="large")})
-    st.download_button("Download filtered CSV", display.to_csv(index=False).encode("utf-8"), f"job_applications_{datetime.now():%Y%m%d_%H%M}.csv", "text/csv")
+    st.dataframe(display, use_container_width=True, hide_index=True, height=560, key=f"{table_key}_table", column_config={"Open Email": st.column_config.LinkColumn("Open Email", display_text="Open"), "Action Needed": st.column_config.CheckboxColumn("Action Needed"), "Subject": st.column_config.TextColumn(width="large"), "Notes": st.column_config.TextColumn(width="large")})
+    st.download_button("Download filtered CSV", display.to_csv(index=False).encode("utf-8"), f"job_applications_{datetime.now():%Y%m%d_%H%M}.csv", "text/csv", key=f"download_{table_key}_csv")
 
 
 def company_timeline(df: pd.DataFrame) -> None:
@@ -255,9 +256,9 @@ def company_timeline(df: pd.DataFrame) -> None:
     with left:
         fig = px.bar(summary.head(15), x="Emails", y="Company Name", orientation="h", color="ActionNeeded", text="Emails")
         fig.update_layout(height=520, margin=dict(l=10, r=10, t=20, b=10), yaxis={"categoryorder": "total ascending"}, xaxis_title="Emails", yaxis_title="", coloraxis_showscale=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="company_summary_chart")
     with right:
-        company = st.selectbox("Select company", summary["Company Name"].tolist())
+        company = st.selectbox("Select company", summary["Company Name"].tolist(), key="company_timeline_select")
         for _, row in df[df["Company Name"] == company].head(12).iterrows():
             when = row["Received Datetime"].strftime("%d %b %Y %H:%M") if pd.notna(row["Received Datetime"]) else "Unknown"
             st.markdown(f"<div class='panel' style='margin-bottom:10px'><span class='pill'>{row['Status']}</span><h4 style='margin:.5rem 0 .1rem'>{row['Job Role']}</h4><div class='muted'>{when}</div><p>{row['Subject']}</p></div>", unsafe_allow_html=True)
@@ -272,7 +273,7 @@ def analytics(df: pd.DataFrame) -> None:
     weekly = valid.groupby(["Week", "Status"], as_index=False).size().rename(columns={"size": "Count"})
     fig = px.bar(weekly, x="Week", y="Count", color="Status", barmode="stack", color_discrete_map=STATUS_COLORS)
     fig.update_layout(height=430, margin=dict(l=10, r=10, t=20, b=10), legend_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="weekly_analytics_chart")
     c1, c2, c3 = st.columns(3)
     total = max(len(valid), 1)
     c1.metric("Rejection share", f"{valid['Status'].eq('Rejected').sum()/total*100:.1f}%")
