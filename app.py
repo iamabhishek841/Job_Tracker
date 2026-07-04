@@ -16,7 +16,38 @@ STATUS_ORDER = ["Application Applied", "Application Update", "Recruiter / Follow
 STATUS_COLORS = {"Application Applied":"#2563eb","Application Update":"#64748b","Recruiter / Follow-up":"#7c3aed","Online Assessment":"#f59e0b","Interview / Next Stage":"#10b981","Rejected":"#ef4444"}
 NOISE = ["newsletter","job alert","jobs alert","recommended jobs","top employers","company spotlights","discover your path","contest","streak","unsubscribe","how to use neetcode","get ready for interview","hackathon","workshop","webinar","bootcamp","masterclass","summit","meetup","career fair","campus event","virtual event","community challenge","reset password","reset link"]
 GENERIC_COMPANIES = {"codesignal","leetcode","neetcode","hello","mail","comms","unknown"}
-INTERVIEW_STRICT = ["interview invite","interview invitation","invited to interview","selected for interview","shortlisted for interview","schedule your interview","schedule an interview","interview scheduling","availability for interview","next stage","technical screen","phone screen","recruiter screen"]
+INTERVIEW_STRICT = [
+    "interview invite",
+    "interview invitation",
+    "invited to interview",
+    "invite you to interview",
+    "selected for interview",
+    "shortlisted for interview",
+    "schedule your interview",
+    "book your interview",
+    "select a time for your interview",
+    "choose a time for your interview",
+    "availability for interview",
+    "technical screen",
+    "phone screen",
+    "recruiter screen",
+    "technical interview",
+    "onsite interview",
+    "final interview"
+]
+INTERVIEW_FALSE_POSITIVE = [
+    "we will contact you to schedule an interview",
+    "we will contact you to schedule",
+    "if your qualifications match",
+    "if your profile matches",
+    "if your experience matches",
+    "currently reviewing your candidacy",
+    "currently reviewing your application",
+    "reviewing your candidacy",
+    "reviewing your application",
+    "review process may take some time",
+    "in the meantime"
+]
 ASSESSMENT_STRICT = ["online assessment","coding assessment","technical assessment","take the assessment","complete the assessment","assessment invite","test invite","coding test","complete your test"]
 SOURCES = ["LinkedIn","IrishJobs","Indeed","Jobs.ie","Career Page","Greenhouse","Lever","Ashby","Workday","Wellfound / YC"]
 JOB_TYPES = ["Backend Engineer","Platform Engineer","Software Engineer","Cloud Software Engineer","Data Platform Engineer","Data Engineer","ML Platform Engineer","MLOps Engineer","Site Reliability Engineer","DevOps Engineer","Production Engineer","Infrastructure Software Engineer","Python Backend Engineer"]
@@ -45,7 +76,11 @@ def row_text(row): return " ".join(str(row.get(c,"")) for c in ["Email Type / St
 def real_assessment(text):
     context = ["application","role","position","recruit","hiring","graduate","engineer","analyst","software"]
     return has(text,ASSESSMENT_STRICT) and has(text,context) and not has(text,NOISE)
-def real_interview(text): return has(text,INTERVIEW_STRICT) and not has(text,NOISE)
+def real_interview(text):
+    if has(text, INTERVIEW_FALSE_POSITIVE):
+        return False
+
+    return has(text, INTERVIEW_STRICT) and not has(text, NOISE)
 
 def status_for(row):
     text = row_text(row); raw_status = str(row.get("Email Type / Status","")).lower()
@@ -99,7 +134,18 @@ def filter_data(df):
     if df.empty: return df
     min_date = df["Received Datetime"].min().date() if pd.notna(df["Received Datetime"].min()) else date.today()-timedelta(days=30)
     max_date = df["Received Datetime"].max().date() if pd.notna(df["Received Datetime"].max()) else date.today()
-    selected = st.sidebar.date_input("Date range",(min_date,max_date),min_value=min_date,max_value=max_date)
+    today = date.today()
+
+min_picker_date = min(min_date, today)
+max_picker_date = max(max_date, today)
+
+selected = st.sidebar.date_input(
+    "Date range",
+    (today, today),
+    min_value=min_picker_date,
+    max_value=max_picker_date,
+    key="date_range_filter"
+)
     start,end = selected if isinstance(selected,tuple) and len(selected)==2 else (min_date,max_date)
     statuses = st.sidebar.multiselect("Status",[s for s in STATUS_ORDER if s in set(df["Status"])])
     companies = st.sidebar.multiselect("Company",sorted(df["Company Name"].unique()))
