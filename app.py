@@ -31,17 +31,35 @@ st.markdown(
 )
 
 STATUS_COLORS = {
-    "Application Received": "#2563eb",
+    "Application Applied": "#2563eb",
+    "Application Update": "#64748b",
     "Recruiter / Follow-up": "#7c3aed",
     "Online Assessment": "#f59e0b",
-    "Interview / Scheduling": "#10b981",
-    "Offer / Positive Update": "#16a34a",
+    "Interview / Next Stage": "#10b981",
     "Rejected": "#ef4444",
-    "Job Related": "#64748b",
-    "Unknown": "#94a3b8",
 }
 STATUS_ORDER = list(STATUS_COLORS)
-ACTION_STATUSES = {"Online Assessment", "Interview / Scheduling", "Recruiter / Follow-up", "Offer / Positive Update"}
+ACTION_STATUSES = {"Recruiter / Follow-up", "Online Assessment", "Interview / Next Stage"}
+
+NOISE_TERMS = [
+    "who's hiring",
+    "whos hiring",
+    "top employers",
+    "company spotlights",
+    "job alert",
+    "jobs alert",
+    "recommended jobs",
+    "jobs you may be interested",
+    "newsletter",
+    "discover your path",
+    "leetcode contest",
+    "join leetcode contest",
+    "get ready for interview",
+    "interest in etsy",
+    "unsubscribe",
+]
+
+GENERIC_COMPANIES = {"mail", "comms", "leetcode", "unknown", "workday@myworkday.com"}
 
 
 def spreadsheet_id(value: str) -> str:
@@ -60,39 +78,102 @@ def load_data(sheet_url: str, sheet_name: str) -> pd.DataFrame:
     return df
 
 
-def clean_status(value: str) -> str:
-    text = str(value or "").lower()
-    if any(x in text for x in ["offer", "positive"]):
-        return "Offer / Positive Update"
-    if any(x in text for x in ["interview", "schedule", "scheduling", "availability"]):
-        return "Interview / Scheduling"
-    if any(x in text for x in ["assessment", "codesignal", "hackerrank", "coding test", "test invite"]):
-        return "Online Assessment"
-    if any(x in text for x in ["rejected", "not selected", "unsuccessful", "not moving forward", "regret"]):
-        return "Rejected"
-    if any(x in text for x in ["application received", "thank you for applying", "received"]):
-        return "Application Received"
-    if any(x in text for x in ["recruiter", "talent", "follow"]):
-        return "Recruiter / Follow-up"
-    return str(value).strip() if str(value).strip() else "Unknown"
-
-
-def text_of(row: pd.Series) -> str:
+def combined_text(row: pd.Series) -> str:
     cols = ["Email Type / Status", "Subject", "Notes", "Sender", "Company Name", "Job Role"]
     return " ".join(str(row.get(c, "")) for c in cols).lower()
 
 
+def has_any(text: str, terms: list[str]) -> bool:
+    return any(term in text for term in terms)
+
+
+def classify_status(row: pd.Series) -> str:
+    text = combined_text(row)
+    raw_status = str(row.get("Email Type / Status", "")).lower()
+
+    if has_any(text, ["not selected", "not moving forward", "unsuccessful", "regret to inform", "unfortunately"]):
+        return "Rejected"
+    if has_any(text, ["online assessment", "assessment", "codesignal", "hackerrank", "coding test", "test invite"]):
+        return "Online Assessment"
+    if has_any(text, ["interview", "schedule a call", "availability", "calendar", "next stage", "next step", "final round", "technical screen"]):
+        return "Interview / Next Stage"
+    if has_any(text, ["recruiter", "talent acquisition", "hiring team", "follow-up", "follow up"]):
+        return "Recruiter / Follow-up"
+    if has_any(text, ["thank you for applying", "thanks for applying", "application received", "has been received", "we received your application", "your application to"]):
+        return "Application Applied"
+    if "application" in text or "portal" in text or "workday" in text or "greenhouse" in text or "lever" in text:
+        return "Application Update"
+    if "job related" in raw_status:
+        return "Application Update"
+    return "Application Update"
+
+
+def is_relevant(row: pd.Series) -> bool:
+    text = combined_text(row)
+    company = str(row.get("Company Name", "")).strip().lower()
+    subject = str(row.get("Subject", "")).strip().lower()
+
+    strong_terms = [
+        "thank you for applying",
+        "thanks for applying",
+        "application received",
+        "has been received",
+        "we received your application",
+        "your application to",
+        "online assessment",
+        "assessment",
+        "codesignal",
+        "hackerrank",
+        "coding test",
+        "interview",
+        "next stage",
+        "not selected",
+        "not moving forward",
+        "unsuccessful",
+        "regret to inform",
+        "recruiter",
+        "talent acquisition",
+        "hiring team",
+    ]
+
+    if has_any(text, NOISE_TERMS):
+        return False
+    if subject in {"keep track of your application", "thank you for applying!"} and company in GENERIC_COMPANIES:
+        return False
+    return has_any(text, strong_terms)
+
+
+def extract_role(row: pd.Series) -> str:
+    current = str(row.get("Job Role", "")).strip()
+    subject = str(row.get("Subject", "")).strip()
+    if current and current.lower() not in {"unknown", "latest", "role. in the"}:
+        return current
+    patterns = [
+        r"role of\s+(.+?)(?:$|\.|,|\-| at )",
+        r"for the role of\s+(.+?)(?:$|\.|,|\-| at )",
+        r"for the\s+(.+?)\s+(?:role|position)",
+        r"application for\s+(.+?)(?:$|\.|,| at )",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, subject, flags=re.I)
+        if match:
+            role = match.group(1).strip(" .,-")
+            if 3 <= len(role) <= 90:
+                return role
+    return "Unknown"
+
+
 def action_needed(row: pd.Series) -> bool:
-    status = clean_status(row.get("Email Type / Status", ""))
-    text = text_of(row)
-    terms = ["deadline", "complete", "due", "before", "availability", "schedule", "reply", "respond", "confirm", "assessment", "interview", "next step", "next stage"]
-    return status in ACTION_STATUSES or (status != "Rejected" and any(t in text for t in terms))
+    status = str(row.get("Status", ""))
+    text = combined_text(row)
+    action_terms = ["deadline", "complete", "due", "before", "availability", "schedule", "reply", "respond", "confirm", "assessment", "interview", "next step", "next stage"]
+    return status in ACTION_STATUSES or (status != "Rejected" and has_any(text, action_terms))
 
 
 def priority(row: pd.Series) -> str:
-    status = clean_status(row.get("Email Type / Status", ""))
-    text = text_of(row)
-    if status in {"Interview / Scheduling", "Offer / Positive Update"} or any(t in text for t in ["deadline", "due", "within 24", "within 48"]):
+    status = str(row.get("Status", ""))
+    text = combined_text(row)
+    if status == "Interview / Next Stage" or has_any(text, ["deadline", "due", "within 24", "within 48"]):
         return "High"
     if status in {"Online Assessment", "Recruiter / Follow-up"}:
         return "Medium"
@@ -100,18 +181,15 @@ def priority(row: pd.Series) -> str:
 
 
 def thread_type(row: pd.Series) -> str:
-    status = clean_status(row.get("Email Type / Status", ""))
-    text = text_of(row)
-    if "referral" in text or "referred" in text:
-        return "Referral"
+    status = str(row.get("Status", ""))
     return {
         "Rejected": "Rejection",
         "Online Assessment": "Assessment",
-        "Interview / Scheduling": "Interview",
+        "Interview / Next Stage": "Interview",
         "Recruiter / Follow-up": "Recruiter",
-        "Application Received": "Portal Application",
-        "Offer / Positive Update": "Offer",
-    }.get(status, "Other")
+        "Application Applied": "Applied",
+        "Application Update": "Update",
+    }.get(status, "Update")
 
 
 def deadline(row: pd.Series) -> str:
@@ -121,33 +199,42 @@ def deadline(row: pd.Series) -> str:
         r"(?:deadline|due|before|by)\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
         r"within\s+(\d+\s+(?:hours?|days?))",
     ]
-    for p in patterns:
-        m = re.search(p, text, flags=re.I)
-        if m:
-            return m.group(1).strip()
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.I)
+        if match:
+            return match.group(1).strip()
     return ""
 
 
 def prepare(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     defaults = {
-        "Tracked At": "", "Received Date": "", "Received Time": "", "Company Name": "Unknown", "Job Role": "Unknown",
-        "Email Type / Status": "Unknown", "Sender": "", "Subject": "", "Gmail Link": "", "Notes": "",
+        "Tracked At": "",
+        "Received Date": "",
+        "Received Time": "",
+        "Company Name": "Unknown",
+        "Job Role": "Unknown",
+        "Email Type / Status": "Unknown",
+        "Sender": "",
+        "Subject": "",
+        "Gmail Link": "",
+        "Notes": "",
     }
     for col, default in defaults.items():
         if col not in df.columns:
             df[col] = default
-    for col in defaults:
-        df[col] = df[col].fillna(defaults[col]).astype(str).str.strip()
+        df[col] = df[col].fillna(default).astype(str).str.strip()
+
     df["Company Name"] = df["Company Name"].replace("", "Unknown")
-    df["Job Role"] = df["Job Role"].replace("", "Unknown")
+    df["Job Role"] = df.apply(extract_role, axis=1)
     combined = (df["Received Date"] + " " + df["Received Time"]).str.strip()
     df["Received Datetime"] = pd.to_datetime(combined, errors="coerce")
     fallback = pd.to_datetime(df["Received Date"], errors="coerce")
     df.loc[df["Received Datetime"].isna(), "Received Datetime"] = fallback
     df["Date"] = df["Received Datetime"].dt.date
     df["Time"] = df["Received Datetime"].dt.strftime("%H:%M").fillna("")
-    df["Status"] = df["Email Type / Status"].apply(clean_status)
+    df = df[df.apply(is_relevant, axis=1)].copy()
+    df["Status"] = df.apply(classify_status, axis=1)
     df["Action Needed"] = df.apply(action_needed, axis=1)
     df["Priority"] = df.apply(priority, axis=1)
     df["Thread Type"] = df.apply(thread_type, axis=1)
@@ -156,12 +243,15 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def card(label: str, value: int | str, help_text: str) -> None:
-    st.markdown(f"<div class='metric-card'><div class='metric-label'>{label}</div><div class='metric-value'>{value}</div><div class='metric-help'>{help_text}</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='metric-card'><div class='metric-label'>{label}</div><div class='metric-value'>{value}</div><div class='metric-help'>{help_text}</div></div>",
+        unsafe_allow_html=True,
+    )
 
 
 def filter_df(df: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.title("⚙️ Tracker")
-    st.sidebar.caption("Google Sheet → Streamlit dashboard")
+    st.sidebar.caption("Only applied jobs, updates, assessments, interviews and rejections")
     if st.sidebar.button("Refresh now", use_container_width=True, key="refresh_now_sidebar"):
         st.cache_data.clear()
         st.rerun()
@@ -174,11 +264,13 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
     max_date = max_dt.date() if pd.notna(max_dt) else date.today()
     picked = st.sidebar.date_input("Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date, key="date_range_filter")
     start, end = picked if isinstance(picked, tuple) and len(picked) == 2 else (min_date, max_date)
-    statuses = st.sidebar.multiselect("Status", [s for s in STATUS_ORDER if s in set(df["Status"])] + sorted(set(df["Status"]) - set(STATUS_ORDER)), key="status_filter")
+    status_options = [s for s in STATUS_ORDER if s in set(df["Status"])]
+    statuses = st.sidebar.multiselect("Status", status_options, key="status_filter")
     companies = st.sidebar.multiselect("Company", sorted(df["Company Name"].unique()), key="company_filter")
     priorities = st.sidebar.multiselect("Priority", ["High", "Medium", "Normal"], key="priority_filter")
     action = st.sidebar.radio("Action Needed", ["All", "Yes", "No"], horizontal=True, key="action_needed_filter")
     search = st.sidebar.text_input("Search company / role / subject", key="search_filter")
+
     out = df[(df["Date"] >= start) & (df["Date"] <= end)].copy()
     if statuses:
         out = out[out["Status"].isin(statuses)]
@@ -191,21 +283,20 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
     if action == "No":
         out = out[~out["Action Needed"]]
     if search.strip():
-        q = search.lower().strip()
+        query = search.lower().strip()
         blob = (out["Company Name"] + " " + out["Job Role"] + " " + out["Subject"] + " " + out["Notes"]).str.lower()
-        out = out[blob.str.contains(re.escape(q), na=False)]
+        out = out[blob.str.contains(re.escape(query), na=False)]
     return out
 
 
 def show_metrics(df: pd.DataFrame) -> None:
-    cols = st.columns(7)
+    cols = st.columns(6)
     values = [
-        ("Total", len(df), "tracked rows"),
-        ("This Week", int((df["Received Datetime"] >= pd.Timestamp.now() - pd.Timedelta(days=7)).sum()) if not df.empty else 0, "last 7 days"),
-        ("Action", int(df["Action Needed"].sum()) if not df.empty else 0, "needs attention"),
+        ("Total", len(df), "clean tracked rows"),
+        ("Applied", int((df["Status"] == "Application Applied").sum()) if not df.empty else 0, "confirmation emails"),
+        ("Updates", int((df["Status"] == "Application Update").sum()) if not df.empty else 0, "portal updates"),
         ("Assessments", int((df["Status"] == "Online Assessment").sum()) if not df.empty else 0, "tests/tasks"),
-        ("Interviews", int((df["Status"] == "Interview / Scheduling").sum()) if not df.empty else 0, "calls/scheduling"),
-        ("Recruiters", int((df["Status"] == "Recruiter / Follow-up").sum()) if not df.empty else 0, "follow-ups"),
+        ("Interviews", int((df["Status"] == "Interview / Next Stage").sum()) if not df.empty else 0, "next stage"),
         ("Rejected", int((df["Status"] == "Rejected").sum()) if not df.empty else 0, "closed"),
     ]
     for col, item in zip(cols, values):
@@ -218,33 +309,54 @@ def charts(df: pd.DataFrame) -> None:
     with left:
         st.subheader("Status pipeline")
         if df.empty:
-            st.info("No data yet.")
+            st.info("No clean job-tracker data yet.")
         else:
-            x = df.groupby("Status", as_index=False).size().rename(columns={"size": "Count"}).sort_values("Count", ascending=False)
-            fig = px.bar(x, x="Status", y="Count", text="Count", color="Status", color_discrete_map=STATUS_COLORS)
+            counts = df.groupby("Status", as_index=False).size().rename(columns={"size": "Count"})
+            counts["Order"] = counts["Status"].map({s: i for i, s in enumerate(STATUS_ORDER)})
+            counts = counts.sort_values("Order")
+            fig = px.bar(counts, x="Status", y="Count", text="Count", color="Status", color_discrete_map=STATUS_COLORS)
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), showlegend=False, xaxis_title="", yaxis_title="Emails")
             st.plotly_chart(fig, use_container_width=True, key="status_pipeline_chart")
     with right:
         st.subheader("Daily activity")
         if df.empty:
-            st.info("No data yet.")
+            st.info("No clean job-tracker data yet.")
         else:
-            d = df.dropna(subset=["Received Datetime"]).assign(Day=lambda z: z["Received Datetime"].dt.date).groupby(["Day", "Status"], as_index=False).size().rename(columns={"size": "Count"})
-            fig = px.area(d, x="Day", y="Count", color="Status", color_discrete_map=STATUS_COLORS)
+            daily = df.dropna(subset=["Received Datetime"]).assign(Day=lambda z: z["Received Datetime"].dt.date).groupby(["Day", "Status"], as_index=False).size().rename(columns={"size": "Count"})
+            fig = px.area(daily, x="Day", y="Count", color="Status", color_discrete_map=STATUS_COLORS)
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title="", yaxis_title="Emails", legend_title="")
             st.plotly_chart(fig, use_container_width=True, key="daily_activity_chart")
 
 
 def dataframe(df: pd.DataFrame, followups_only: bool = False) -> None:
     table_key = "followups" if followups_only else "applications"
+    data = df.copy()
     if followups_only:
-        df = df[df["Action Needed"]].copy()
-        df["Priority Rank"] = df["Priority"].map({"High": 0, "Medium": 1, "Normal": 2}).fillna(3)
-        df = df.sort_values(["Priority Rank", "Received Datetime"], ascending=[True, False])
+        data = data[data["Action Needed"]].copy()
+        data["Priority Rank"] = data["Priority"].map({"High": 0, "Medium": 1, "Normal": 2}).fillna(3)
+        data = data.sort_values(["Priority Rank", "Received Datetime"], ascending=[True, False])
     cols = ["Date", "Time", "Priority", "Company Name", "Job Role", "Status", "Action Needed", "Thread Type", "Deadline", "Subject", "Gmail Link", "Notes"]
-    display = df[cols].rename(columns={"Company Name": "Company", "Job Role": "Role", "Gmail Link": "Open Email"})
-    st.dataframe(display, use_container_width=True, hide_index=True, height=560, key=f"{table_key}_table", column_config={"Open Email": st.column_config.LinkColumn("Open Email", display_text="Open"), "Action Needed": st.column_config.CheckboxColumn("Action Needed"), "Subject": st.column_config.TextColumn(width="large"), "Notes": st.column_config.TextColumn(width="large")})
-    st.download_button("Download filtered CSV", display.to_csv(index=False).encode("utf-8"), f"job_applications_{datetime.now():%Y%m%d_%H%M}.csv", "text/csv", key=f"download_{table_key}_csv")
+    display = data[cols].rename(columns={"Company Name": "Company", "Job Role": "Role", "Gmail Link": "Open Email"})
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        height=560,
+        key=f"{table_key}_table",
+        column_config={
+            "Open Email": st.column_config.LinkColumn("Open Email", display_text="Open"),
+            "Action Needed": st.column_config.CheckboxColumn("Action Needed"),
+            "Subject": st.column_config.TextColumn(width="large"),
+            "Notes": st.column_config.TextColumn(width="large"),
+        },
+    )
+    st.download_button(
+        "Download filtered CSV",
+        display.to_csv(index=False).encode("utf-8"),
+        f"job_applications_{datetime.now():%Y%m%d_%H%M}.csv",
+        "text/csv",
+        key=f"download_{table_key}_csv",
+    )
 
 
 def company_timeline(df: pd.DataFrame) -> None:
@@ -252,7 +364,7 @@ def company_timeline(df: pd.DataFrame) -> None:
         st.info("No company data yet.")
         return
     summary = df.groupby("Company Name", as_index=False).agg(Emails=("Company Name", "size"), Latest=("Received Datetime", "max"), ActionNeeded=("Action Needed", "sum")).sort_values(["ActionNeeded", "Latest"], ascending=[False, False])
-    left, right = st.columns([.9, 1.1])
+    left, right = st.columns([0.9, 1.1])
     with left:
         fig = px.bar(summary.head(15), x="Emails", y="Company Name", orientation="h", color="ActionNeeded", text="Emails")
         fig.update_layout(height=520, margin=dict(l=10, r=10, t=20, b=10), yaxis={"categoryorder": "total ascending"}, xaxis_title="Emails", yaxis_title="", coloraxis_showscale=False)
@@ -274,11 +386,11 @@ def analytics(df: pd.DataFrame) -> None:
     fig = px.bar(weekly, x="Week", y="Count", color="Status", barmode="stack", color_discrete_map=STATUS_COLORS)
     fig.update_layout(height=430, margin=dict(l=10, r=10, t=20, b=10), legend_title="")
     st.plotly_chart(fig, use_container_width=True, key="weekly_analytics_chart")
-    c1, c2, c3 = st.columns(3)
     total = max(len(valid), 1)
-    c1.metric("Rejection share", f"{valid['Status'].eq('Rejected').sum()/total*100:.1f}%")
-    c2.metric("Action-needed share", f"{valid['Action Needed'].sum()/total*100:.1f}%")
-    c3.metric("Assessment share", f"{valid['Status'].eq('Online Assessment').sum()/total*100:.1f}%")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Assessment share", f"{valid['Status'].eq('Online Assessment').sum()/total*100:.1f}%")
+    c2.metric("Interview share", f"{valid['Status'].eq('Interview / Next Stage').sum()/total*100:.1f}%")
+    c3.metric("Rejection share", f"{valid['Status'].eq('Rejected').sum()/total*100:.1f}%")
 
 
 def main() -> None:
@@ -289,9 +401,10 @@ def main() -> None:
         st.markdown("Sheet sharing **Anyone with the link → Viewer** karo aur tab name **Job Applications** rakho.")
         st.code(str(exc))
         return
-    latest = df["Received Datetime"].max()
-    latest_text = latest.strftime("%d %b %Y, %H:%M") if pd.notna(latest) else "No rows yet"
-    st.markdown(f"<div class='hero'><h1>📬 Job Application Tracker</h1><p>Live Gmail → Google Sheet → Streamlit dashboard • Latest tracked: {latest_text}</p></div>", unsafe_allow_html=True)
+
+    latest = df["Received Datetime"].max() if not df.empty else pd.NaT
+    latest_text = latest.strftime("%d %b %Y, %H:%M") if pd.notna(latest) else "No clean rows yet"
+    st.markdown(f"<div class='hero'><h1>📬 Job Application Tracker</h1><p>Only real applications, updates, assessments, interviews and rejections • Latest tracked: {latest_text}</p></div>", unsafe_allow_html=True)
     filtered = filter_df(df)
     show_metrics(filtered)
     tabs = st.tabs(["Overview", "Follow-ups", "Applications", "Company Timeline", "Analytics"])
